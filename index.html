@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel ADM - LinkUP</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; display: flex; flex-direction: column; height: 100vh; background-color: #f4f7f6; }
+        #topo { background: #2c3e50; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); z-index: 1000; }
+        #nomeEmpresa { margin: 0; font-size: 1.2rem; }
+        #logoEmpresa { height: 45px; background: white; border-radius: 5px; padding: 2px; }
+        #mapa { height: 40%; width: 100%; border-bottom: 3px solid #ddd; }
+        #lista { height: 60%; overflow-y: auto; padding: 15px; }
+        .titulo-secao { color: #34495e; border-bottom: 2px solid #34495e; display: inline-block; margin-bottom: 15px; font-size: 1.1rem; }
+       
+        .card { background: white; padding: 15px; margin-bottom: 12px; border-radius: 8px; display: flex; flex-direction: column; box-shadow: 0 2px 4px rgba(0,0,0,0.1); border-left: 8px solid #ccc; position: relative; }
+        .info b { color: #2c3e50; font-size: 1.1rem; display: block; margin-bottom: 4px; }
+        .info p { margin: 2px 0; color: #555; font-size: 0.9rem; }
+        .info small { color: #555; font-size: 0.85rem; display: block; margin-top: 2px; }
+       
+        .acoes { display: flex; gap: 10px; margin-top: 15px; flex-wrap: wrap; }
+       
+        /* Botões Estilizados */
+        .btn { padding: 12px 14px; border-radius: 6px; text-decoration: none; font-weight: bold; font-size: 0.85rem; text-align: center; flex: 1; min-width: 160px; display: flex; align-items: center; justify-content: center; gap: 8px; transition: 0.3s; border: none; cursor: pointer; }
+        .btn-cliente { background: #25d366; color: white; }
+        .btn-motorista { background: #3498db; color: white; }
+        .btn:hover { opacity: 0.9; transform: scale(1.02); }
+       
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: bold; color: white; margin-left: 10px; text-transform: uppercase; }
+
+        /* Botão de Lixeira */
+        .btn-lixeira { position: absolute; top: 10px; right: 10px; background: none; border: none; cursor: pointer; font-size: 1.3rem; padding: 5px; transition: 0.2s; }
+        .btn-lixeira:hover { transform: scale(1.2); }
+    </style>
+</head>
+<body>
+
+<div id="topo">
+    <h3 id="nomeEmpresa">Carregando Painel...</h3>
+    <img id="logoEmpresa" src="" alt="Logo">
+</div>
+
+<div id="mapa"></div>
+
+<div id="lista">
+    <h4 class="titulo-secao">Gestão de Caçambas e Despacho</h4>
+    <div id="conteudoPedidos">Buscando informações...</div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const URL_API = "https://script.google.com/macros/s/AKfycbwYBuaZVn4osCbmOpYPTdItfn72T3uy4WNvsG025bBNPvu6NRL39_wmONE50Dp_txIQ/exec";
+    const ID_EMPRESA_ATUAL = "1";
+
+    var map = L.map('mapa').setView([-22.5744, -44.9622], 14);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    async function carregarPainel() {
+        try {
+            const respConfig = await fetch(`${URL_API}?funcao=buscarConfig&id=${ID_EMPRESA_ATUAL}`);
+            const config = await respConfig.json();
+            document.getElementById('nomeEmpresa').innerText = config.nome;
+            document.getElementById('logoEmpresa').src = config.logo;
+
+            const respPedidos = await fetch(`${URL_API}?funcao=buscarPedidos&id=${ID_EMPRESA_ATUAL}`);
+            const pedidos = await respPedidos.json();
+           
+            let htmlLista = "";
+            const hoje = new Date();
+            hoje.setHours(0,0,0,0);
+
+            const iconeVerde = L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
+            const iconeAmarelo = L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
+            const iconeVermelho = L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png', iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34], shadowSize: [41, 41] });
+
+            pedidos.forEach(p => {
+                let dataTexto = p.data.toString().split("T")[0];
+                let partes = dataTexto.includes("-") ? dataTexto.split("-") : dataTexto.split("/");
+                let dtPed = partes[0].length === 4 ? new Date(partes[0], partes[1]-1, partes[2]) : new Date(partes[2], partes[1]-1, partes[0]);
+
+                let horaBruta = p.hora.toString().includes("T") ? p.hora.toString().split("T")[1].substring(0, 5) : p.hora.toString().substring(0, 5);
+                let [hh, mm] = horaBruta.split(':');
+                let dataAux = new Date();
+                dataAux.setHours(parseInt(hh), parseInt(mm), 0);
+               
+                dataAux.setHours(dataAux.getHours() + 3);
+                dataAux.setMinutes(dataAux.getMinutes() + 9);
+               
+                let horaLimpa = dataAux.getHours().toString().padStart(2, '0') + ":" + dataAux.getMinutes().toString().padStart(2, '0');
+
+                const dias = Math.max(0, Math.floor((hoje - dtPed) / (1000 * 60 * 60 * 24)));
+                const prazo = parseInt(p.prazo) || 3;
+
+                let icone = iconeVerde; let status = "NO PRAZO"; let cor = "#27ae60";
+                if (dias >= prazo) { cor = "#e74c3c"; status = "VENCIDO"; icone = iconeVermelho; }
+                else if (dias >= prazo - 1) { cor = "#f39c12"; status = "RETIRAR AMANHÃ"; icone = iconeAmarelo; }
+
+                L.marker([p.lat, p.lng], {icon: icone}).addTo(map).bindPopup(`<b>${p.nome}</b>`);
+
+                const msgDespacho = `🚛 *LINK UP - ORDEM DE SERVIÇO*%0A%0A*Cliente:* ${p.nome}%0A*Endereço:* ${p.endereco}%0A*Data/Hora:* ${dtPed.toLocaleDateString('pt-BR')} às ${horaLimpa}%0A%0A📍 *Localização no Mapa:*%0Ahttp://maps.google.com/maps?q=${p.lat},${p.lng}`;
+
+                htmlLista += `
+                    <div class="card" style="border-left-color: ${cor};">
+                        <button class="btn-lixeira" onclick="confirmarExclusao('${p.idPedido}', '${p.nome}')" title="Apagar Pedido">🗑️</button>
+                        <div class="info">
+                            <b>${p.nome} <span class="badge" style="background:${cor}">${status}</span></b>
+                            <p>${p.endereco}</p>
+                            <small>🗓️ Entregue em: <b>${dtPed.toLocaleDateString('pt-BR')}</b> às <b>${horaLimpa}</b></small>
+                            <small>🕒 Tempo na rua: <b>${dias} dia(s)</b></small>
+                        </div>
+                        <div class="acoes">
+                            <a href="https://wa.me/${p.whatsapp}?text=Olá ${p.nome}, somos da ${config.nome}. Tudo bem?" class="btn btn-cliente" target="_blank">
+                                💬 Confirmar com Cliente
+                            </a>
+                            <a href="https://wa.me/?text=${msgDespacho}" class="btn btn-motorista" target="_blank">
+                                🚛 Enviar p/ Caminhoneiro
+                            </a>
+                        </div>
+                    </div>`;
+            });
+            document.getElementById('conteudoPedidos').innerHTML = htmlLista || "Nenhuma caçamba ativa.";
+        } catch (e) { console.error(e); }
+    }
+
+    async function confirmarExclusao(idPedido, nomeCliente) {
+        const confirmar = confirm(`⚠️ ATENÇÃO: Deseja realmente apagar o histórico de "${nomeCliente}"?`);
+        if (confirmar) {
+            try {
+                const response = await fetch(`${URL_API}?funcao=apagarPedido&idPedido=${idPedido}`);
+                const texto = await response.text();
+                if (texto === "Apagado") {
+                    alert("Pedido excluído com sucesso!");
+                    location.reload();
+                } else {
+                    alert("Erro ao excluir. Verifique se o ID existe na planilha.");
+                }
+            } catch (e) {
+                alert("Erro de conexão com a planilha.");
+            }
+        }
+    }
+
+    carregarPainel();
+</script>
+</body>
+</html>
+
+ 
