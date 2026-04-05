@@ -3,122 +3,124 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solicitar Caçamba - LinkUP</title>
+    <title>Fazer Pedido - Link Up</title>
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 20px; background: #f4f4f4; color: #333; }
-        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        .topo { text-align: center; margin-bottom: 20px; }
-        #logoEmpresa { max-height: 80px; margin-bottom: 10px; }
-        input, select, button { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-        button { background: #27ae60; color: white; border: none; font-weight: bold; cursor: pointer; font-size: 16px; }
-        button:disabled { background: #ccc; }
-        .status { text-align: center; font-size: 14px; color: #666; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f2f5; padding: 15px; margin: 0; }
+        .box { background: white; padding: 20px; border-radius: 15px; max-width: 450px; margin: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #1c1e21; margin-top: 0; }
+        #gps-status { background: #fff3cd; color: #856404; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 15px; font-size: 14px; }
+        label { display: block; margin: 10px 0 5px; font-weight: bold; color: #444; }
+        input, select, button { width: 100%; padding: 12px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 16px; }
+        .info-item { background: #f8f9fa; padding: 12px; border-left: 5px solid #25d366; margin-bottom: 15px; }
+        .btn-pedido { background: #25d366; color: white; border: none; font-weight: bold; cursor: pointer; font-size: 18px; }
+        .btn-retirada { background: #3498db; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        hr { border: 0; border-top: 1px solid #eee; margin: 25px 0; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="topo">
-        <img id="logoEmpresa" src="" alt="Carregando...">
-        <h2 id="nomeEmpresa">Carregando...</h2>
+<div class="box">
+    <h2>Realizar Pedido</h2>
+    <div id="gps-status">⌛ Aguardando GPS...</div>
+
+    <input type="text" id="nome" placeholder="Seu Nome Completo">
+    <input type="tel" id="whatsapp" placeholder="WhatsApp (Ex: 12999999999)">
+    <input type="text" id="endereco" placeholder="Nº da Casa / Ponto de Referência">
+
+    <label>Selecione o que deseja:</label>
+    <select id="equipamento" onchange="atualizarDadosItem()"></select>
+
+    <div class="info-item">
+        <strong>Valor:</strong> R$ <span id="exibir-valor">0,00</span><br>
+        <strong>Prazo:</strong> <span id="exibir-prazo">0</span> dias inclusos
     </div>
 
-    <div id="formulario">
-        <label>Seu Nome:</label>
-        <input type="text" id="nomeCliente" placeholder="Digite seu nome completo">
+    <label>Forma de Pagamento:</label>
+    <select id="pagamento" onchange="mostrarTroco(this.value)">
+        <option value="Cartão">Cartão (Maquininha)</option>
+        <option value="Pix">Pix</option>
+        <option value="Dinheiro">Dinheiro</option>
+    </select>
 
-        <label>WhatsApp:</label>
-        <input type="tel" id="whatsappCliente" placeholder="Ex: 5512999999999">
+    <input type="number" id="troco" placeholder="Troco para quanto?" style="display:none">
 
-        <label>Endereço de Entrega:</label>
-        <input type="text" id="endereco" placeholder="Rua, número, bairro">
+    <button class="btn-pedido" onclick="enviarPedido()">CONFIRMAR PEDIDO</button>
 
-        <button id="btnEnviar" onclick="enviarPedido()">Solicitar Caçamba Agora</button>
-        <p class="status" id="mensagemStatus">Buscando sua localização...</p>
-    </div>
+    <hr>
+   
+    <h3 style="text-align:center;">Já terminou de usar?</h3>
+    <input type="tel" id="whatsRetirada" placeholder="Digite seu WhatsApp">
+    <button class="btn-retirada" onclick="solicitarRetirada()">SOLICITAR RETIRADA (AZUL)</button>
 </div>
 
 <script>
-    const URL_API = "https://script.google.com/macros/s/AKfycbwYBuaZVn4osCbmOpYPTdItfn72T3uy4WNvsG025bBNPvu6NRL39_wmONE50Dp_txIQ/exec";
-    const ID_EMPRESA = "1"; // Muda para 2 para outra empresa
-    let lat = 0;
-    let lng = 0;
+    const URL_API = "https://script.google.com/macros/s/AKfycbyq4_LXcksXSjOSDwZKzhpO8FhqAr3LUbbrRSVXEnvH_NJDR3DG7PeSohS9rpYylybI/exec";
+    const ID_EMPRESA = "1";
+    let lat = 0, lng = 0, listaItens = [];
 
-    // 1. AO ABRIR: Busca Logo da Empresa e Pega Localização
     window.onload = async () => {
-        try {
-            const resp = await fetch(`${URL_API}?funcao=buscarConfig&id=${ID_EMPRESA}`);
-            const config = await resp.json();
-            document.getElementById('nomeEmpresa').innerText = config.nome;
-            document.getElementById('logoEmpresa').src = config.logo;
-        } catch (e) {
-            console.error("Erro ao carregar empresa");
-        }
+        // Ativa GPS
+        navigator.geolocation.getCurrentPosition(p => {
+            lat = p.coords.latitude; lng = p.coords.longitude;
+            document.getElementById('gps-status').innerText = "📍 GPS Localizado!";
+            document.getElementById('gps-status').style.background = "#d4edda";
+            document.getElementById('gps-status').style.color = "#155724";
+        }, null, {enableHighAccuracy: true});
 
-        // Pega GPS do celular
-        navigator.geolocation.getCurrentPosition(pos => {
-            lat = pos.coords.latitude;
-            lng = pos.coords.longitude;
-            document.getElementById('mensagemStatus').innerText = "Localização obtida com sucesso!";
-        }, err => {
-            document.getElementById('mensagemStatus').innerText = "Por favor, ative o GPS.";
-            document.getElementById('mensagemStatus').style.color = "red";
+        // Carrega Config e Itens
+        const resConfig = await fetch(`${URL_API}?funcao=buscarConfig&id=${ID_EMPRESA}`);
+        const config = await resConfig.json();
+        document.querySelector('h2').innerText = config.nome;
+
+        const resItens = await fetch(`${URL_API}?funcao=buscarEquipamentos&id=${ID_EMPRESA}`);
+        listaItens = await resItens.json();
+        let options = "";
+        listaItens.forEach(item => {
+            options += `<option value="${item.nome}">${item.nome}</option>`;
         });
+        document.getElementById('equipamento').innerHTML = options;
+        atualizarDadosItem();
     };
 
-    // 2. FUNÇÃO PARA CALCULAR HORA (COM DESCONTO DE 3h06)
-    function obterHoraAjustada() {
-        let agora = new Date();
-        // Subtrai 3 horas (3 * 60 min) e 6 minutos
-        agora.setMinutes(agora.getMinutes() - (3 * 60 + 6));
-       
-        let h = String(agora.getHours()).padStart(2, '0');
-        let m = String(agora.getMinutes()).padStart(2, '0');
-        return `${h}:${m}`;
+    function atualizarDadosItem() {
+        const selecionado = listaItens.find(i => i.nome == document.getElementById('equipamento').value);
+        if(selecionado) {
+            document.getElementById('exibir-valor').innerText = selecionado.valor;
+            document.getElementById('exibir-prazo').innerText = selecionado.prazo;
+        }
     }
 
-    // 3. ENVIA OS DADOS PARA A PLANILHA
+    function mostrarTroco(val) {
+        document.getElementById('troco').style.display = (val === 'Dinheiro') ? 'block' : 'none';
+    }
+
     async function enviarPedido() {
-        const btn = document.getElementById('btnEnviar');
-        const nome = document.getElementById('nomeCliente').value;
-        const whats = document.getElementById('whatsappCliente').value;
-        const end = document.getElementById('endereco').value;
+        const nome = document.getElementById('nome').value;
+        const whats = document.getElementById('whatsapp').value;
+        if(!nome || !whats || lat === 0) return alert("Preencha tudo e aguarde o GPS!");
 
-        if (!nome || !end) {
-            alert("Preencha o nome e o endereço!");
-            return;
-        }
-
-        btn.disabled = true;
-        btn.innerText = "Enviando...";
-
-        const dadosPedido = {
-            idEmpresa: ID_EMPRESA,
-            nome: nome,
-            whatsapp: whats,
-            endereco: end,
-            lat: lat,
-            lng: lng,
-            data: new Date().toLocaleDateString('pt-BR'),
-            hora: obterHoraAjustada(), // Usa a hora com desconto aqui!
-            prazo: "3" // Valor padrão que você definiu
+        const dados = {
+            idEmpresa: ID_EMPRESA, nome, whatsapp: whats,
+            endereco: document.getElementById('endereco').value,
+            lat, lng,
+            equipamento: document.getElementById('equipamento').value,
+            prazo: document.getElementById('exibir-prazo').innerText,
+            pagamento: document.getElementById('pagamento').value,
+            troco: document.getElementById('troco').value || 0
         };
 
-        try {
-            await fetch(URL_API, {
-                method: "POST",
-                body: JSON.stringify(dadosPedido)
-            });
-            alert("Pedido enviado com sucesso! O dono da caçamba já recebeu.");
-            location.reload();
-        } catch (error) {
-            alert("Erro ao enviar. Tente novamente.");
-            btn.disabled = false;
-            btn.innerText = "Solicitar Caçamba Agora";
-        }
+        await fetch(URL_API, {method: 'POST', body: JSON.stringify(dados)});
+        alert("Pedido enviado com sucesso!");
+        location.reload();
+    }
+
+    async function solicitarRetirada() {
+        const w = document.getElementById('whatsRetirada').value;
+        if(!w) return alert("Informe seu WhatsApp!");
+        await fetch(`${URL_API}?funcao=solicitarRetirada&whatsapp=${w}`);
+        alert("Retirada solicitada! Seu pino ficará AZUL para o motorista.");
     }
 </script>
-
 </body>
 </html>
 
